@@ -1,0 +1,101 @@
+board:
+  buy_url_cn: N/A
+  buy_url_global: N/A
+  debug_interface: SWD
+  debugger: DAP-LINK
+  description_en: EV_F448_LQ80 is an evaluation board officially launched by XHSC,
+    equipped with the HC32F448MCTI mcu, based on the ARM Cortex-M4 core with a maximum
+    frequency of 120MHz. It supports Jlink and DAP-LINK debugging and is equipped
+    with a wealth of onboard resources that can give full play to the performance
+    of the HC32F448MCTI chip.
+  description_zh: EV_F448_LQ80是XHSC官方推出的搭载HC32F448MCTI芯片的评估板，基于ARM CortexM4内核，最高主频200MHz，支持Jlink和DAP-LINK调试，板载资源丰富，可以充分发挥出HC32F448MCTI芯片的性能
+  emulator_machine: ''
+  large_image: documents/images/EV_F448_LQ80_Rev1.0.jpg
+  name: HC32F448-XHSC-EV
+  price_cn: N/A CNY
+  price_global: N/A USD
+  sale_contact_cn: N/A
+  sale_contact_global: N/A
+  small_image: documents/images/EV_F448_LQ80_Rev1.0_small.png
+  vendor: XHSC
+  version: 1.0.0
+chip:
+  chip_name: HC32F448MCTI
+  clock_source: XTAL
+  device_vendor: XHSC
+  family_name: HC32
+  rx_name: PC11
+  series_name: HC32F4
+  source_freq: '8000000'
+  sub_series_name: HC32F448
+  target_freq: '200000000'
+  tx_name: PC10
+  uart_name: UART2
+docs: []
+example_projects: []
+features:
+- max 200MHz
+- 256KByte Flash
+- 64KByte SRAM
+- 4KByte SRAM with power-down retention.
+- Three low-power modes,  include sleep, stop, power down. And the lowest power consumption
+  of 1.7uA.
+- Supports peripheral event triggering
+- ADC,DAC,CMP
+- total12 Timer, one RTC, two WDT
+- up to 14 communication interfaces (USART *6, SPI*3,I2C*2, QSPI*1, MCAN*2,)
+- upport extend SRAM
+- AES/HASH.TRNG
+features_zh:
+- '主频最大200MHz '
+- 256KByte Flash
+- 64KByte SRAM
+- 4KByte掉电保持SRAM
+- 三种低功耗模式，sleep，stop，power down，最低功耗1.7uA
+- 支持外设事件相互触发
+- 高性能模拟，,ADC,DAC,CMP
+- 共计12个timer，一个RTC，2个看门狗
+- 最大14个通信接口(6个 USART,3个 SPI, 2个 I2C,1个QSPI,  2个 MCAN,)
+- 外部存储扩展器EXMC，支持SRAM
+- 数据加密，AES/HASH.TRNG
+pkg_type: Board_Support_Packages
+pkg_vendor: XHSC
+pkg_version: 1.0.0
+template_projects:
+- builtin_files:
+  - files_and_folders:
+    - .config
+    - .cproject
+    - .gitignore
+    - .project
+    - .settings
+    - applications
+    - board
+    - figures
+    - jlink
+    - Kconfig
+    - libraries
+    - makefile.targets
+    - project.ewd
+    - project.ewp
+    - project.eww
+    - project.uvoptx
+    - project.uvprojx
+    - README.md
+    - rt-thread
+    - rtconfig.h
+    - rtconfig.py
+    - rtconfig_preinc.h
+    - SConscript
+    - SConstruct
+    - template.ewp
+    - template.eww
+    - template.uvoptx
+    - template.uvprojx
+    source_path_offset: project_0
+    target_path_offset: ''
+  external_files: []
+  project_description: ''
+  project_name: hc32f448_template
+  project_type: rt-thread|@full|@4.0.2
+yaml_version: 3
