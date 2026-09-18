@@ -9,7 +9,6 @@
  * 2024-02-20     CDT          add structure for associating with the dma
  */
 
-
 #ifndef __DRV_ADC_H__
 #define __DRV_ADC_H__
 
@@ -26,8 +25,7 @@
 
 /* C binding of definitions if building with C++ compiler */
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 
@@ -74,7 +72,7 @@ struct adc_dev_priv_params
 /*******************************************************************************
  * Global pre-processor symbols/macros ('#define')
  ******************************************************************************/
-#define ADC_USING_EOCA_DMA_FLAG     (1U)
+#define ADC_USING_EOCA_DMA_FLAG (1U)
 
 /*******************************************************************************
  * Global variable definitions ('extern')

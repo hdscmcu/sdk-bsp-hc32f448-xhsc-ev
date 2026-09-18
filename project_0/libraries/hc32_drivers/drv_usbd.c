@@ -6,6 +6,9 @@
  * Change Logs:
  * Date           Author       Notes
  * 2023-02-14     CDT          first version
+ * 2025-07-25     CDT          support HC32F4A8
+ * 2026-05-27     CDT          support HC32F4A2
+ * 2026-06-03     CDT          support HC32F467
  */
 
 /*******************************************************************************
@@ -17,64 +20,71 @@
 #if defined(BSP_USING_USBD)
 
 //#define DRV_DEBUG
-#define LOG_TAG             "drv.usbd"
+#define LOG_TAG "drv.usbd"
 #include <drv_log.h>
 
 #include "board_config.h"
 #include "irq_config.h"
 #include "drv_usbd.h"
 
-extern rt_err_t rt_hw_usb_board_init(void);
+#if defined(HC32F472)
+#define USBFS_VBUS_INT_PIN (rt_base_t)(((rt_uint16_t)USBF_VBUS_PORT * 16) + __CLZ(__RBIT(USBF_VBUS_PIN)))
+#endif
+
+#if !defined(BSP_USING_USBD_HS)
+extern rt_err_t rt_hw_usbfs_board_init(void);
+#else
+extern rt_err_t rt_hw_usbhs_board_init(void);
+#endif
 extern void rt_hw_us_delay(rt_uint32_t us);
 
 static usb_core_instance _hc32_usbd;
 static struct udcd _hc32_udc;
 
 
-static struct ep_id _ep_pool[] =
-{
-    {0x0,  USB_EP_ATTR_CONTROL,     USB_DIR_INOUT,  64, ID_ASSIGNED  },
-    {0x1,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x1,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x2,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x2,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x3,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x3,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x4,  USB_EP_ATTR_INT,         USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x4,  USB_EP_ATTR_INT,         USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x5,  USB_EP_ATTR_ISOC,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x5,  USB_EP_ATTR_ISOC,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-#if defined (HC32F4A0)
-    {0x6,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x6,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x7,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x7,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x8,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x8,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0x9,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0x9,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0xA,  USB_EP_ATTR_BULK,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0xA,  USB_EP_ATTR_BULK,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0xB,  USB_EP_ATTR_INT,         USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0xB,  USB_EP_ATTR_INT,         USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0xC,  USB_EP_ATTR_INT,         USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0xC,  USB_EP_ATTR_INT,         USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0xD,  USB_EP_ATTR_INT,         USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0xD,  USB_EP_ATTR_INT,         USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0xE,  USB_EP_ATTR_ISOC,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0xE,  USB_EP_ATTR_ISOC,        USB_DIR_OUT,    64, ID_UNASSIGNED},
-    {0xF,  USB_EP_ATTR_ISOC,        USB_DIR_IN,     64, ID_UNASSIGNED},
-    {0xF,  USB_EP_ATTR_ISOC,        USB_DIR_OUT,    64, ID_UNASSIGNED},
+static struct ep_id _ep_pool[] = {
+    { 0x0, USB_EP_ATTR_CONTROL, USB_DIR_INOUT, 64, ID_ASSIGNED },
+    { 0x1, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x1, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x2, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x2, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x3, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x3, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x4, USB_EP_ATTR_INT, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x4, USB_EP_ATTR_INT, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x5, USB_EP_ATTR_ISOC, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x5, USB_EP_ATTR_ISOC, USB_DIR_OUT, 64, ID_UNASSIGNED },
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F4A8) || defined(HC32F467)
+    { 0x6, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x6, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x7, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x7, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x8, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x8, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0x9, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0x9, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0xA, USB_EP_ATTR_BULK, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0xA, USB_EP_ATTR_BULK, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0xB, USB_EP_ATTR_INT, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0xB, USB_EP_ATTR_INT, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0xC, USB_EP_ATTR_INT, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0xC, USB_EP_ATTR_INT, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0xD, USB_EP_ATTR_INT, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0xD, USB_EP_ATTR_INT, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0xE, USB_EP_ATTR_ISOC, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0xE, USB_EP_ATTR_ISOC, USB_DIR_OUT, 64, ID_UNASSIGNED },
+    { 0xF, USB_EP_ATTR_ISOC, USB_DIR_IN, 64, ID_UNASSIGNED },
+    { 0xF, USB_EP_ATTR_ISOC, USB_DIR_OUT, 64, ID_UNASSIGNED },
 #endif
-    {0xFF, USB_EP_ATTR_TYPE_MASK,   USB_DIR_MASK,   0,  ID_ASSIGNED  },
+    { 0xFF, USB_EP_ATTR_TYPE_MASK, USB_DIR_MASK, 0, ID_ASSIGNED },
 };
 
-void usb_udelay(const uint32_t usec)
+__WEAK void usb_udelay(const uint32_t usec)
 {
     rt_hw_us_delay(usec);
 }
 
-void usb_mdelay(const uint32_t msec)
+__WEAK void usb_mdelay(const uint32_t msec)
 {
     rt_thread_mdelay(msec);
 }
@@ -95,7 +105,7 @@ static void usb_opendevep(usb_core_instance *pdev, uint8_t ep_addr, uint16_t ep_
         ep = &pdev->dev.out_ep[tmp_2];
     }
 
-    ep->epidx  = tmp_2;
+    ep->epidx = tmp_2;
 
     ep->ep_dir = tmp_1;
     ep->maxpacket = ep_mps;
@@ -113,7 +123,7 @@ static void usb_opendevep(usb_core_instance *pdev, uint8_t ep_addr, uint16_t ep_
     usb_epactive(&pdev->regs, ep);
 }
 
-static void usb_shutdevep(usb_core_instance *pdev, uint8_t  ep_addr)
+static void usb_shutdevep(usb_core_instance *pdev, uint8_t ep_addr)
 {
     USB_DEV_EP *ep;
     __IO uint8_t tmp_1, tmp_2;
@@ -128,9 +138,24 @@ static void usb_shutdevep(usb_core_instance *pdev, uint8_t  ep_addr)
     {
         ep = &pdev->dev.out_ep[tmp_2];
     }
-    ep->epidx  = tmp_2;
+    ep->epidx = tmp_2;
     ep->ep_dir = tmp_1;
     usb_epdeactive(&pdev->regs, ep);
+}
+
+static void usb_flsdevep(usb_core_instance *pdev, uint8_t epnum)
+{
+    __IO uint8_t tmp_1;
+
+    tmp_1 = epnum >> 7;     /* EP type, it is IN(=1) or OUT(=0) */
+    if (tmp_1 != 0U)
+    {
+        usb_txfifoflush(&pdev->regs, (uint32_t)epnum & (uint32_t)0x7F);
+    }
+    else
+    {
+        usb_rxfifoflush(&pdev->regs);
+    }
 }
 
 static void usb_readytorx(usb_core_instance *pdev, uint8_t ep_addr, uint8_t *pbuf, uint16_t buf_len)
@@ -176,7 +201,7 @@ static void usb_deveptx(usb_core_instance *pdev, uint8_t ep_addr, uint8_t *pbuf,
     ep->xfer_buff = pbuf;
     ep->dma_addr = (uint32_t)pbuf;
     ep->xfer_count = 0UL;
-    ep->xfer_len  = buf_len;
+    ep->xfer_len = buf_len;
 
     if (tmp_1 == 0U)
     {
@@ -206,7 +231,7 @@ static void usb_stalldevep(usb_core_instance *pdev, uint8_t epnum)
     }
 
     ep->ep_stall = 1U;
-    ep->epidx    = tmp_2;
+    ep->epidx = tmp_2;
     if (tmp_1 != 0U)
     {
         ep->ep_dir = 1U;
@@ -236,7 +261,7 @@ static void usb_clrstall(usb_core_instance *pdev, uint8_t epnum)
     }
 
     ep->ep_stall = 0U;
-    ep->epidx    = tmp_2;
+    ep->epidx = tmp_2;
     if (tmp_1 != 0U)
     {
         ep->ep_dir = 1U;
@@ -301,7 +326,7 @@ static void usb_dataout_process(usb_core_instance *pdev, uint8_t epnum)
     }
     else
     {
-        rt_usbd_ep0_out_handler(&_hc32_udc,  pdev->dev.out_ep[0].xfer_count);
+        rt_usbd_ep0_out_handler(&_hc32_udc, pdev->dev.out_ep[0].xfer_count);
     }
 }
 
@@ -327,8 +352,7 @@ static void usb_isooutincomplt_process(usb_core_instance *pdev)
     /* reserved */
 }
 
-static usb_dev_int_cbk_typedef dev_int_cbk =
-{
+static usb_dev_int_cbk_typedef dev_int_cbk = {
     &usb_dev_rst,
     &usb_ctrlconn,
     &usb_dev_susp,
@@ -341,7 +365,7 @@ static usb_dev_int_cbk_typedef dev_int_cbk =
     &usb_isooutincomplt_process
 };
 
-static usb_dev_int_cbk_typedef  *dev_int_cbkpr = &dev_int_cbk;
+static usb_dev_int_cbk_typedef *dev_int_cbkpr = &dev_int_cbk;
 
 static uint32_t usb_rddevinep(usb_core_instance *pdev, uint8_t epnum)
 {
@@ -361,7 +385,7 @@ static void usb_wrblanktxfifo(usb_core_instance *pdev, uint32_t epnum)
     uint16_t u16spclen;
     uint32_t u32diepempmsk;
 
-    ep  = &pdev->dev.in_ep[epnum];
+    ep = &pdev->dev.in_ep[epnum];
     u32Len = ep->xfer_len - ep->xfer_count;
     if (u32Len > ep->maxpacket)
     {
@@ -379,7 +403,7 @@ static void usb_wrblanktxfifo(usb_core_instance *pdev, uint32_t epnum)
         }
         u32Len32b = (u32Len + 3UL) >> 2;
         usb_wrpkt(&pdev->regs, ep->xfer_buff, (uint8_t)epnum, (uint16_t)u32Len, pdev->basic_cfgs.dmaen);
-        ep->xfer_buff  += u32Len;
+        ep->xfer_buff += u32Len;
         ep->xfer_count += u32Len;
         u16spclen = usb_rdineptxfspcavail(pdev, epnum);
     }
@@ -391,6 +415,8 @@ static void usb_wrblanktxfifo(usb_core_instance *pdev, uint32_t epnum)
     }
 }
 
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F460) || defined(HC32F4A8) || \
+    defined(HC32F467)
 #ifdef VBUS_SENSING_ENABLED
 static void usb_sessionrequest_isr(usb_core_instance *pdev)
 {
@@ -403,6 +429,7 @@ static void usb_sessionrequest_isr(usb_core_instance *pdev)
         CLR_REG32_BIT(*pdev->regs.GCCTL, USBFS_GCCTL_STPPCLK | USBFS_GCCTL_GATEHCLK);
     }
 }
+#endif
 #endif
 
 static void usb_resume_isr(usb_core_instance *pdev)
@@ -482,7 +509,6 @@ static void usb_inep_isr(usb_core_instance *pdev)
             if ((u32diepint & TXFEMP) != 0UL)
             {
                 usb_wrblanktxfifo(pdev, u8epnum);
-                WRITE_REG32(pdev->regs.INEP_REGS[u8epnum]->DIEPINT, TXFEMP);
             }
         }
         u8epnum++;
@@ -495,7 +521,7 @@ static void usb_outep_isr(usb_core_instance *pdev)
     uint32_t u32EpIntr;
     uint32_t u32doepint;
     uint8_t u8epnum = 0U;
-    uint32_t u8Xfer;
+    uint32_t u32Xfer;
     uint32_t u32ReadEpSize;
 
     u32EpIntr = usb_getalloepintr(&pdev->regs);
@@ -510,8 +536,8 @@ static void usb_outep_isr(usb_core_instance *pdev)
                 if (pdev->basic_cfgs.dmaen == 1U)
                 {
                     u32ReadEpSize = (READ_REG32(pdev->regs.OUTEP_REGS[u8epnum]->DOEPTSIZ) & USBFS_DOEPTSIZ_XFRSIZ);
-                    u8Xfer = LL_MIN(pdev->dev.out_ep[u8epnum].maxpacket, pdev->dev.out_ep[u8epnum].xfer_len);
-                    pdev->dev.out_ep[u8epnum].xfer_count = u8Xfer - u32ReadEpSize;
+                    u32Xfer = LL_MIN(pdev->dev.out_ep[u8epnum].maxpacket, pdev->dev.out_ep[u8epnum].xfer_len);
+                    pdev->dev.out_ep[u8epnum].xfer_count = u32Xfer - u32ReadEpSize;
                     if (u8epnum != 0U)
                     {
                         pdev->dev.out_ep[u8epnum].xfer_count = pdev->dev.out_ep[u8epnum].xfer_len - u32ReadEpSize;
@@ -522,8 +548,8 @@ static void usb_outep_isr(usb_core_instance *pdev)
                 {
                     if ((pdev->dev.device_state == USB_EP0_STATUS_OUT) && (u8epnum == 0U))
                     {
-                        pdev->dev.out_ep[0].xfer_len       = 64U;
-                        pdev->dev.out_ep[0].rem_data_len   = 64U;
+                        pdev->dev.out_ep[0].xfer_len = 64U;
+                        pdev->dev.out_ep[0].rem_data_len = 64U;
                         pdev->dev.out_ep[0].total_data_len = 64U;
                         usb_ep0revcfg(&pdev->regs, pdev->basic_cfgs.dmaen, pdev->dev.setup_pkt_buf);
                         pdev->dev.device_state = USB_EP0_IDLE;
@@ -565,7 +591,7 @@ static void usb_rxstsqlvl_isr(usb_core_instance *pdev)
 
     CLR_REG32_BIT(pdev->regs.GREGS->GINTMSK, USBFS_GINTMSK_RXFNEM);
 
-    u32grxsts  = READ_REG32(pdev->regs.GREGS->GRXSTSP);
+    u32grxsts = READ_REG32(pdev->regs.GREGS->GRXSTSP);
     u8epnum = (uint8_t)(u32grxsts & USBFS_GRXSTSP_CHNUM_EPNUM);
     u8PktStatus = (uint8_t)((u32grxsts & USBFS_GRXSTSP_PKTSTS) >> USBFS_GRXSTSP_PKTSTS_POS);
     u16ByteCnt = (uint16_t)((u32grxsts & USBFS_GRXSTSP_BCNT) >> USBFS_GRXSTSP_BCNT_POS);
@@ -575,6 +601,7 @@ static void usb_rxstsqlvl_isr(usb_core_instance *pdev)
     case STS_DATA_UPDT:
         if (0U != u16ByteCnt)
         {
+            RT_ASSERT(RT_IS_ALIGN((uint32_t)ep->xfer_buff, 4UL));
             usb_rdpkt(&pdev->regs, ep->xfer_buff, u16ByteCnt);
             ep->xfer_buff += u16ByteCnt;
             ep->xfer_count += u16ByteCnt;
@@ -605,7 +632,7 @@ static void usb_reset_isr(usb_core_instance *pdev)
 
     CLR_REG32_BIT(pdev->regs.DREGS->DCTL, USBFS_DCTL_RWUSIG);
     usb_txfifoflush(&pdev->regs, 0UL);
-    for (i = 0UL; i < pdev->basic_cfgs.dev_epnum ; i++)
+    for (i = 0UL; i < pdev->basic_cfgs.dev_epnum; i++)
     {
         WRITE_REG32(pdev->regs.INEP_REGS[i]->DIEPINT, 0xFFUL);
         WRITE_REG32(pdev->regs.OUTEP_REGS[i]->DOEPINT, 0xFFUL);
@@ -624,8 +651,8 @@ static void usb_reset_isr(usb_core_instance *pdev)
 #endif
 
     CLR_REG32_BIT(pdev->regs.DREGS->DCFG, USBFS_DCFG_DAD);
-    pdev->dev.out_ep[0].xfer_len       = 64U;
-    pdev->dev.out_ep[0].rem_data_len   = 64U;
+    pdev->dev.out_ep[0].xfer_len = 64U;
+    pdev->dev.out_ep[0].rem_data_len = 64U;
     pdev->dev.out_ep[0].total_data_len = 64U;
     usb_ep0revcfg(&pdev->regs, pdev->basic_cfgs.dmaen, pdev->dev.setup_pkt_buf);
     WRITE_REG32(pdev->regs.GREGS->GINTSTS, USBFS_GINTSTS_USBRST);
@@ -707,11 +734,14 @@ static void usb_isr_handler(usb_core_instance *pdev)
         {
             usb_isooutincomplt_isr(pdev);
         }
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F460) || defined(HC32F4A8) || \
+    defined(HC32F467)
 #ifdef VBUS_SENSING_ENABLED
         if ((u32gintsts & VBUSV_INT) != 0UL)
         {
             usb_sessionrequest_isr(pdev);
         }
+#endif
 #endif
     }
 }
@@ -722,6 +752,27 @@ static void usbd_irq_handler(void)
     usb_isr_handler(&_hc32_usbd);
     rt_interrupt_leave();
 }
+
+#if defined(HC32F472)
+void USBFS_Handler(void)
+{
+    usbd_irq_handler();
+}
+
+#ifdef VBUS_SENSING_ENABLED
+static void vbus_irq_handler(void *args)
+{
+    if (PIN_LOW == rt_pin_read(USBFS_VBUS_INT_PIN))
+    {
+        SET_REG32_BIT(_hc32_usbd.regs.DREGS->DCTL, USBFS_DCTL_SDIS);
+    }
+    else
+    {
+        CLR_REG32_BIT(_hc32_usbd.regs.DREGS->DCTL, USBFS_DCTL_SDIS);
+    }
+}
+#endif
+#endif
 
 static rt_err_t _usbd_ep_set_stall(rt_uint8_t address)
 {
@@ -752,6 +803,7 @@ static rt_err_t _usbd_ep_enable(uep_t ep)
     RT_ASSERT(ep->ep_desc != RT_NULL);
     usb_opendevep(&_hc32_usbd, ep->ep_desc->bEndpointAddress,
                   ep->ep_desc->wMaxPacketSize, ep->ep_desc->bmAttributes);
+    usb_flsdevep(&_hc32_usbd, ep->ep_desc->bEndpointAddress);
     return RT_EOK;
 }
 
@@ -759,24 +811,25 @@ static rt_err_t _usbd_ep_disable(uep_t ep)
 {
     RT_ASSERT(ep != RT_NULL);
     RT_ASSERT(ep->ep_desc != RT_NULL);
+    usb_flsdevep(&_hc32_usbd, ep->ep_desc->bEndpointAddress);
     usb_shutdevep(&_hc32_usbd, ep->ep_desc->bEndpointAddress);
     return RT_EOK;
 }
 
-static rt_size_t _usbd_ep_read(rt_uint8_t address, void *buffer)
+static rt_ssize_t _usbd_ep_read(rt_uint8_t address, void *buffer)
 {
     rt_size_t size = 0;
     RT_ASSERT(buffer != RT_NULL);
     return size;
 }
 
-static rt_size_t _usbd_ep_read_prepare(rt_uint8_t address, void *buffer, rt_size_t size)
+static rt_ssize_t _usbd_ep_read_prepare(rt_uint8_t address, void *buffer, rt_size_t size)
 {
     usb_readytorx(&_hc32_usbd, address, buffer, size);
     return size;
 }
 
-static rt_size_t _usbd_ep_write(rt_uint8_t address, void *buffer, rt_size_t size)
+static rt_ssize_t _usbd_ep_write(rt_uint8_t address, void *buffer, rt_size_t size)
 {
     usb_deveptx(&_hc32_usbd, address, buffer, size);
     return size;
@@ -805,19 +858,20 @@ static rt_err_t _usbd_init(rt_device_t device)
     struct hc32_irq_config irq_config;
 
     pdev = (usb_core_instance *)device->user_data;
-    rt_hw_usb_board_init();
-#if !defined(BSP_USING_USBHS)
+#if !defined(BSP_USING_USBD_HS)
+    rt_hw_usbfs_board_init();
     FCG_Fcg1PeriphClockCmd(FCG1_PERIPH_USBFS, ENABLE);
 #else
+    rt_hw_usbhs_board_init();
     FCG_Fcg1PeriphClockCmd(FCG1_PERIPH_USBHS, ENABLE);
 #endif
     /* Parameters */
-#if !defined(BSP_USING_USBHS)
+#if !defined(BSP_USING_USBD_HS)
     stcPortIdentify.u8CoreID = USBFS_CORE_ID;
 #else
     stcPortIdentify.u8CoreID = USBHS_CORE_ID;
 #endif
-#if defined (HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F4A8) || defined(HC32F467)
 #if !defined(BSP_USING_USBHS_PHY_EXTERN)
     stcPortIdentify.u8PhyType = USBHS_PHY_EMBED;
 #else
@@ -836,22 +890,32 @@ static rt_err_t _usbd_init(rt_device_t device)
     /* Enable USB Global interrupt */
     usb_ginten(&pdev->regs);
     /* NVIC Config */
-    irq_config.irq_num = BSP_USB_GLB_IRQ_NUM;
-#if !defined(BSP_USING_USBHS)
+#if !defined(BSP_USING_USBD_HS)
+    irq_config.irq_num = BSP_USBFS_GLB_IRQ_NUM;
     irq_config.int_src = INT_SRC_USBFS_GLB;
+    irq_config.irq_prio = BSP_USBFS_GLB_IRQ_PRIO;
 #else
+    irq_config.irq_num = BSP_USBHS_GLB_IRQ_NUM;
     irq_config.int_src = INT_SRC_USBHS_GLB;
+    irq_config.irq_prio = BSP_USBHS_GLB_IRQ_PRIO;
 #endif
-    irq_config.irq_prio = BSP_USB_GLB_IRQ_PRIO;
+
     /* register interrupt */
     hc32_install_irq_handler(&irq_config,
                              usbd_irq_handler,
                              RT_TRUE);
+#if defined(HC32F472)
+#ifdef VBUS_SENSING_ENABLED
+    /* VBUS Extint config */
+    rt_pin_mode(USBFS_VBUS_INT_PIN, PIN_MODE_INPUT);
+    rt_pin_attach_irq(USBFS_VBUS_INT_PIN, PIN_IRQ_MODE_RISING_FALLING, vbus_irq_handler, (void *)"callbackargs");
+    rt_pin_irq_enable(USBFS_VBUS_INT_PIN, PIN_IRQ_ENABLE);
+#endif
+#endif
     return RT_EOK;
 }
 
-const static struct udcd_ops _udc_ops =
-{
+const static struct udcd_ops _udc_ops = {
     _usbd_set_address,
     _usbd_set_config,
     _usbd_ep_set_stall,
@@ -867,8 +931,7 @@ const static struct udcd_ops _udc_ops =
 };
 
 #ifdef RT_USING_DEVICE_OPS
-const static struct rt_device_ops _ops =
-{
+const static struct rt_device_ops _ops = {
     _usbd_init,
     RT_NULL,
     RT_NULL,

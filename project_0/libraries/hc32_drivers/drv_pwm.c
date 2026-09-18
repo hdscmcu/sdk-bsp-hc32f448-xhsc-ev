@@ -6,27 +6,32 @@
  * Change Logs:
  * Date           Author            Notes
  * 2022-06-27     lianghongquan     first version
- * 2023-02-22     CDT               add hc32f4a0 support
+ * 2023-02-22     CDT               support HC32F4A0
+ * 2024-11-20     CDT               support HC32F448
+ * 2025-01-03     CDT               support HC32F472
+ * 2026-05-27     CDT               support HC32F4A2
+ * 2026-06-03     CDT               support HC32F467
  */
 
 #include <board.h>
 
 #include "drv_config.h"
-#include <drivers/rt_drv_pwm.h>
+#include <drivers/dev_pwm.h>
 #include <pwm_tmr_config.h>
 
 #if defined(BSP_USING_PWM)
 
-//#define DRV_DEBUG
-#define LOG_TAG             "drv_pwm"
+// #define DRV_DEBUG
+#define LOG_TAG "drv_pwm"
 #include <drv_log.h>
 
 #if defined(BSP_USING_PWM_TMRA)
 
-#if defined(HC32F460)
-    #define TMRA_CHANNEL_NUM_MAX     8U
-#elif defined(HC32F4A0)
-    #define TMRA_CHANNEL_NUM_MAX     4U
+#if defined(HC32F460) || defined(HC32F448)
+#define TMRA_CHANNEL_NUM_MAX 8U
+#elif defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
+#define TMRA_CHANNEL_NUM_MAX 4U
 #endif
 
 enum
@@ -82,8 +87,7 @@ struct hc32_pwm_tmra
     stc_tmra_pwm_init_t stcPwmInit;
 };
 
-static struct hc32_pwm_tmra g_pwm_tmra_array[] =
-{
+static struct hc32_pwm_tmra g_pwm_tmra_array[] = {
 #ifdef BSP_USING_PWM_TMRA_1
     PWM_TMRA_1_CONFIG,
 #endif
@@ -127,7 +131,8 @@ static rt_uint32_t tmra_get_clk_notdiv(CM_TMRA_TypeDef *TMRAx)
     rt_uint32_t u32clkFreq;
     rt_uint32_t u32BusName;
 
-#if defined(HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
     switch ((rt_uint32_t)TMRAx)
     {
     case (rt_uint32_t)CM_TMRA_1:
@@ -295,7 +300,7 @@ static rt_err_t tmra_pwm_set_period(struct rt_device_pwm *device, struct rt_pwm_
         return -RT_ERROR;
     }
     period_value = configuration->period * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-    period_value =  period_value > 1 ? period_value - 1 : 1;
+    period_value = period_value > 1 ? period_value - 1 : 1;
     TMRA_SetPeriodValue(TMRAx, period_value);
 
     /* setting PeriodValue maybe change the div,so we need to recalculate the CompareValue */
@@ -304,7 +309,8 @@ static rt_err_t tmra_pwm_set_period(struct rt_device_pwm *device, struct rt_pwm_
         if (pwm->channel & (0x01UL << i))
         {
             compare_value = (*(compare_value_channelx + i)) * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-            compare_value = compare_value >= period_value ? period_value : compare_value > 1 ? compare_value - 1 : compare_value;
+            compare_value = compare_value >= period_value ? period_value : compare_value > 1 ? compare_value - 1
+                                                                                             : compare_value;
             TMRA_SetCompareValue(TMRAx, i, compare_value);
             tmra_duyt100or0_output(TMRAx, i, compare_value + 1);
         }
@@ -324,7 +330,8 @@ static rt_err_t tmra_pwm_set_pulse(struct rt_device_pwm *device, struct rt_pwm_c
     u32clkFreq = tmra_get_clk_bydiv(TMRAx);
     period_value = TMRA_GetPeriodValue(TMRAx) + 1;
     compare_value = configuration->pulse * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-    compare_value = compare_value > period_value ? period_value - 1 : compare_value > 1 ? compare_value - 1 : compare_value;
+    compare_value = compare_value > period_value ? period_value - 1 : compare_value > 1 ? compare_value - 1
+                                                                                        : compare_value;
     TMRA_SetCompareValue(TMRAx, configuration->channel, compare_value);
     tmra_duyt100or0_output(TMRAx, configuration->channel, compare_value + 1);
 
@@ -649,7 +656,10 @@ static rt_err_t _tmra_pwm_control(struct rt_device_pwm *device, int cmd, void *a
 {
     struct rt_pwm_configuration *configuration = (struct rt_pwm_configuration *)arg;
 
-    if (!configuration->channel)    return -RT_EINVAL;
+    if (!configuration->channel)
+    {
+        return -RT_EINVAL;
+    }
 
     configuration->channel = (configuration->channel - 1) % TMRA_CHANNEL_NUM_MAX;
 
@@ -672,16 +682,19 @@ static rt_err_t _tmra_pwm_control(struct rt_device_pwm *device, int cmd, void *a
     }
 }
 
-static struct rt_pwm_ops _tmra_ops =
-{
+static struct rt_pwm_ops _tmra_ops = {
     _tmra_pwm_control
 };
 
 #endif  /* BSP_USING_PWM_TMRA */
 
 #if defined(BSP_USING_PWM_TMR4)
-
-#define TMR4_CHANNEL_NUM_MAX     6U
+#if defined(HC32F4A8) || defined(HC32F472) || defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F460) || \
+    defined(HC32F467)
+#define TMR4_CHANNEL_NUM_MAX 6U
+#elif defined(HC32F448) || defined(HC32F334)
+#define TMR4_CHANNEL_NUM_MAX 8U
+#endif
 
 enum
 {
@@ -710,8 +723,7 @@ struct hc32_pwm_tmr4
     stc_tmr4_pwm_init_t stcTmr4PwmInit;
 };
 
-static struct hc32_pwm_tmr4 g_pwm_tmr4_array[] =
-{
+static struct hc32_pwm_tmr4 g_pwm_tmr4_array[] = {
 #ifdef BSP_USING_PWM_TMR4_1
     PWM_TMR4_1_CONFIG,
 #endif
@@ -725,21 +737,14 @@ static struct hc32_pwm_tmr4 g_pwm_tmr4_array[] =
 
 static rt_uint32_t tmr4_get_clk_notdiv(CM_TMR4_TypeDef *TMR4x)
 {
-    rt_uint32_t u32clkFreq;
-    switch ((rt_uint32_t)TMR4x)
-    {
-    case (rt_uint32_t)CM_TMR4_1:
-    case (rt_uint32_t)CM_TMR4_2:
-    case (rt_uint32_t)CM_TMR4_3:
-#if defined(HC32F4A0)
-        u32clkFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK0);
+    rt_uint32_t u32clkFreq = 0UL;
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
+    u32clkFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK0);
 #elif defined(HC32F460)
-        u32clkFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK1);
+    u32clkFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK1);
 #endif
-        break;
-    default:
-        break;
-    }
+
     return (u32clkFreq ? u32clkFreq : HCLK_VALUE);
 }
 
@@ -873,7 +878,7 @@ static rt_err_t tmr4_pwm_set_period(struct rt_device_pwm *device, struct rt_pwm_
         return -RT_ERROR;
     }
     period_value = configuration->period * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-    period_value =  period_value > 1 ? period_value - 1 : 1;
+    period_value = period_value > 1 ? period_value - 1 : 1;
     TMR4_SetPeriodValue(TMR4x, period_value);
 
     for (rt_uint32_t i = 0; i < TMR4_CHANNEL_NUM_MAX; i++)
@@ -881,7 +886,8 @@ static rt_err_t tmr4_pwm_set_period(struct rt_device_pwm *device, struct rt_pwm_
         if (pwm->channel & (0x01UL << i))
         {
             compare_value = (*(compare_value_channelx + i)) * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-            compare_value = compare_value >= period_value ? period_value : compare_value > 1 ? compare_value - 1 : compare_value;
+            compare_value = compare_value >= period_value ? period_value : compare_value > 1 ? compare_value - 1
+                                                                                             : compare_value;
             TMR4_OC_SetCompareValue(TMR4x, i, compare_value);
         }
     }
@@ -918,11 +924,13 @@ static rt_err_t tmr4_pwm_set_pulse(struct rt_device_pwm *device, struct rt_pwm_c
 
     u32clkFreq = tmr4_get_clk_bydiv(TMR4x);
     period_value = TMR4_GetPeriodValue(TMR4x) + 1;
-    compare_value = (rt_uint64_t)configuration->pulse * u32clkFreq / (rt_uint64_t)1000000000;;
-    compare_value = compare_value > period_value ? period_value - 1 : compare_value > 1 ? compare_value - 1 : compare_value;
+    compare_value = (rt_uint64_t)configuration->pulse * u32clkFreq / (rt_uint64_t)1000000000;
+    ;
+    compare_value = compare_value > period_value ? period_value - 1 : compare_value > 1 ? compare_value - 1
+                                                                                        : compare_value;
 
     TMR4_OC_SetCompareValue(TMR4x, configuration->channel, compare_value);
-    *(compare_value_channelx +  configuration->channel) = configuration->pulse;
+    *(compare_value_channelx + configuration->channel) = configuration->pulse;
 
     return RT_EOK;
 }
@@ -938,7 +946,11 @@ static rt_err_t tmr4_pwm_set(struct rt_device_pwm *device, struct rt_pwm_configu
 static void enable_tmr4_unit_clk(void)
 {
 #ifdef BSP_USING_PWM_TMR4_1
+#if defined(HC32F472) || defined(HC32F334)
+    FCG_Fcg2PeriphClockCmd(FCG2_PERIPH_TMR4, ENABLE);
+#else
     FCG_Fcg2PeriphClockCmd(FCG2_PERIPH_TMR4_1, ENABLE);
+#endif
 #endif
 #ifdef BSP_USING_PWM_TMR4_2
     FCG_Fcg2PeriphClockCmd(FCG2_PERIPH_TMR4_2, ENABLE);
@@ -962,13 +974,15 @@ static rt_err_t pwm_tmr4_init(struct hc32_pwm_tmr4 *device)
         {
             TMR4_OC_Init(TMR4x, i, &device->stcTmr4OcInit);
             TMR4_PWM_Init(TMR4x, (i >> 1), &device->stcTmr4PwmInit);
-#if defined(HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
             TMR4_PWM_SetPortOutputMode(TMR4x, i, TMR4_PWM_PIN_OUTPUT_NORMAL);
 #endif
             tmr4_pwm_set_cmpmode(TMR4x, i);
         }
     }
-#if defined(HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
     TMR4_PWM_MainOutputCmd(TMR4x, ENABLE);
 #endif
     TMR4_Start(TMR4x);
@@ -996,6 +1010,14 @@ static void pwm_tmr4_get_channel(void)
 #endif
 #ifdef BSP_USING_PWM_TMR4_1_OWL
     g_pwm_tmr4_array[PWM_TMR4_1_INDEX].channel |= (1 << 5);
+#endif
+#if defined(HC32F448) || defined(HC32F334)
+#ifdef BSP_USING_PWM_TMR4_1_OXH
+    g_pwm_tmr4_array[PWM_TMR4_1_INDEX].channel |= (1 << 6);
+#endif
+#ifdef BSP_USING_PWM_TMR4_1_OXL
+    g_pwm_tmr4_array[PWM_TMR4_1_INDEX].channel |= (1 << 7);
+#endif
 #endif
 #endif
 #ifdef BSP_USING_PWM_TMR4_2
@@ -1044,7 +1066,10 @@ static rt_err_t _tmr4_pwm_control(struct rt_device_pwm *device, int cmd, void *a
 {
     struct rt_pwm_configuration *configuration = (struct rt_pwm_configuration *)arg;
 
-    if (!configuration->channel) return -RT_EPERM;
+    if (!configuration->channel)
+    {
+        return -RT_EPERM;
+    }
 
     configuration->channel = (configuration->channel - 1) % TMR4_CHANNEL_NUM_MAX;
 
@@ -1067,8 +1092,7 @@ static rt_err_t _tmr4_pwm_control(struct rt_device_pwm *device, int cmd, void *a
     }
 }
 
-static struct rt_pwm_ops _tmr4_ops =
-{
+static struct rt_pwm_ops _tmr4_ops = {
     _tmr4_pwm_control
 };
 
@@ -1076,7 +1100,7 @@ static struct rt_pwm_ops _tmr4_ops =
 
 #if defined(BSP_USING_PWM_TMR6)
 
-#define TMR6_CHANNEL_NUM_MAX     2U
+#define TMR6_CHANNEL_NUM_MAX 2U
 
 enum
 {
@@ -1104,6 +1128,12 @@ enum
 #ifdef BSP_USING_PWM_TMR6_8
     PWM_TMR6_8_INDEX,
 #endif
+#ifdef BSP_USING_PWM_TMR6_9
+    PWM_TMR6_9_INDEX,
+#endif
+#ifdef BSP_USING_PWM_TMR6_10
+    PWM_TMR6_10_INDEX,
+#endif
     PWM_TMR6_UNIT_NUM,
 };
 
@@ -1118,8 +1148,7 @@ struct hc32_pwm_tmr6
     rt_bool_t complementary[TMR6_CHANNEL_NUM_MAX];
 };
 
-static struct hc32_pwm_tmr6 g_pwm_tmr6_array[] =
-{
+static struct hc32_pwm_tmr6 g_pwm_tmr6_array[] = {
 #ifdef BSP_USING_PWM_TMR6_1
     PWM_TMR6_1_CONFIG,
 #endif
@@ -1144,28 +1173,19 @@ static struct hc32_pwm_tmr6 g_pwm_tmr6_array[] =
 #ifdef BSP_USING_PWM_TMR6_8
     PWM_TMR6_8_CONFIG,
 #endif
+#ifdef BSP_USING_PWM_TMR6_9
+    PWM_TMR6_9_CONFIG,
+#endif
+#ifdef BSP_USING_PWM_TMR6_10
+    PWM_TMR6_10_CONFIG,
+#endif
 };
 
 static rt_uint32_t tmr6_get_clk_notdiv(CM_TMR6_TypeDef *TMR6x)
 {
     rt_uint32_t u32clkFreq;
-    switch ((rt_uint32_t)TMR6x)
-    {
-    case (rt_uint32_t)CM_TMR6_1:
-    case (rt_uint32_t)CM_TMR6_2:
-    case (rt_uint32_t)CM_TMR6_3:
-#if defined(HC32F4A0)
-    case (rt_uint32_t)CM_TMR6_4:
-    case (rt_uint32_t)CM_TMR6_5:
-    case (rt_uint32_t)CM_TMR6_6:
-    case (rt_uint32_t)CM_TMR6_7:
-    case (rt_uint32_t)CM_TMR6_8:
-#endif
-        u32clkFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK0);
-        break;
-    default:
-        break;
-    }
+    u32clkFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK0);
+
     return (u32clkFreq ? u32clkFreq : HCLK_VALUE);
 }
 
@@ -1201,7 +1221,8 @@ static rt_uint32_t tmr6_get_clk_bydiv(CM_TMR6_TypeDef *TMR6x)
     case (TMR6_CLK_DIV1024):
         u32clkFreq /= 1024;
         break;
-#if defined(HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
     case (TMR6_CLK_DIV32):
         u32clkFreq /= 32;
         break;
@@ -1222,18 +1243,20 @@ static void tmr6_duyt100or0_output(CM_TMR6_TypeDef *TMR6x, rt_uint32_t channel, 
 {
     if (compare_value <= 1)
     {
-#if defined(HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
         TMR6_PWM_SetPolarity(TMR6x, channel, TMR6_STAT_OVF, TMR6_PWM_LOW);
 #elif defined(HC32F460)
-        TMR6_PWM_SetPolarity(TMR6x, TMR6_STAT_MATCH_PERIOD, TMR6_PWM_LOW);
+        TMR6_PWM_SetPolarity(TMR6x, channel, TMR6_STAT_MATCH_PERIOD, TMR6_PWM_LOW);
 #endif
     }
     else
     {
-#if defined(HC32F4A0)
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || \
+    defined(HC32F334) || defined(HC32F467)
         TMR6_PWM_SetPolarity(TMR6x, channel, TMR6_STAT_OVF, TMR6_PWM_HIGH);
 #elif defined(HC32F460)
-        TMR6_PWM_SetPolarity(TMR6x, TMR6_STAT_MATCH_PERIOD, TMR6_PWM_HIGH);
+        TMR6_PWM_SetPolarity(TMR6x, channel, TMR6_STAT_MATCH_PERIOD, TMR6_PWM_HIGH);
 #endif
     }
 }
@@ -1331,7 +1354,8 @@ static rt_err_t tmr6_pwm_set_period(struct rt_device_pwm *device, struct rt_pwm_
         if (pwm->channel & (0x01UL << i))
         {
             compare_value = (pwm_init_t + i)->u32CompareValue * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-            compare_value = compare_value >= period_value ? period_value : compare_value > 1 ? compare_value - 1 : compare_value;
+            compare_value = compare_value >= period_value ? period_value : compare_value > 1 ? compare_value - 1
+                                                                                             : compare_value;
             TMR6_SetCompareValue(TMR6x, i, compare_value);
             tmr6_duyt100or0_output(TMR6x, i, compare_value + 1);
         }
@@ -1351,7 +1375,8 @@ static rt_err_t tmr6_pwm_set_pulse(struct rt_device_pwm *device, struct rt_pwm_c
     period_value = TMR6_GetPeriodValue(TMR6x, TMR6_PERIOD_REG_A) + 1;
 
     compare_value = configuration->pulse * (rt_uint64_t)u32clkFreq / (rt_uint64_t)1000000000;
-    compare_value = compare_value > period_value ? period_value - 1 : compare_value > 1 ? compare_value - 1 : compare_value;
+    compare_value = compare_value > period_value ? period_value - 1 : compare_value > 1 ? compare_value - 1
+                                                                                        : compare_value;
 
     TMR6_SetCompareValue(TMR6x, configuration->channel, compare_value);
     tmr6_duyt100or0_output(TMR6x, configuration->channel, compare_value + 1);
@@ -1393,6 +1418,12 @@ static void enable_tmr6_unit_clk(void)
 #endif
 #ifdef BSP_USING_PWM_TMR6_8
     FCG_Fcg2PeriphClockCmd(FCG2_PERIPH_TMR6_8, ENABLE);
+#endif
+#ifdef BSP_USING_PWM_TMR6_9
+    FCG_Fcg2PeriphClockCmd(FCG2_PERIPH_TMR6_9, ENABLE);
+#endif
+#ifdef BSP_USING_PWM_TMR6_10
+    FCG_Fcg2PeriphClockCmd(FCG2_PERIPH_TMR6_10, ENABLE);
 #endif
 }
 
@@ -1482,13 +1513,32 @@ static void pwm_tmr6_get_channel(void)
     g_pwm_tmr6_array[PWM_TMR6_8_INDEX].channel |= (1 << 1);
 #endif
 #endif
+#ifdef BSP_USING_PWM_TMR6_9
+#ifdef BSP_USING_PWM_TMR6_9_A
+    g_pwm_tmr6_array[PWM_TMR6_9_INDEX].channel |= (1 << 0);
+#endif
+#ifdef BSP_USING_PWM_TMR6_9_B
+    g_pwm_tmr6_array[PWM_TMR6_9_INDEX].channel |= (1 << 1);
+#endif
+#endif
+#ifdef BSP_USING_PWM_TMR6_10
+#ifdef BSP_USING_PWM_TMR6_10_A
+    g_pwm_tmr6_array[PWM_TMR6_10_INDEX].channel |= (1 << 0);
+#endif
+#ifdef BSP_USING_PWM_TMR6_10_B
+    g_pwm_tmr6_array[PWM_TMR6_10_INDEX].channel |= (1 << 1);
+#endif
+#endif
 }
 
 static rt_err_t _tmr6_pwm_control(struct rt_device_pwm *device, int cmd, void *arg)
 {
     struct rt_pwm_configuration *configuration = (struct rt_pwm_configuration *)arg;
 
-    if (!configuration->channel)    return -RT_EINVAL;
+    if (!configuration->channel)
+    {
+        return -RT_EINVAL;
+    }
 
     configuration->channel = (configuration->channel - 1) % TMR6_CHANNEL_NUM_MAX;
 
@@ -1511,8 +1561,7 @@ static rt_err_t _tmr6_pwm_control(struct rt_device_pwm *device, int cmd, void *a
     }
 }
 
-static struct rt_pwm_ops _tmr6_ops =
-{
+static struct rt_pwm_ops _tmr6_ops = {
     _tmr6_pwm_control
 };
 

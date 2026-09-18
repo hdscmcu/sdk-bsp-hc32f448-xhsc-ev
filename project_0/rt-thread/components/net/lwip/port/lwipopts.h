@@ -594,8 +594,12 @@
 #define LWIP_NETIF_API                  1
 #endif
 
-/* MEMP_NUM_SYS_TIMEOUT: the number of simulateously active timeouts. */
+/* MEMP_NUM_SYS_TIMEOUT: the number of simultaneously active timeouts. */
+#if RT_USING_LWIP_VER_NUM == 0x20102
+#define MEMP_NUM_SYS_TIMEOUT       (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_AUTOIP + LWIP_IGMP + LWIP_DNS + PPP_NUM_TIMEOUTS + (LWIP_IPV6 * (1 + LWIP_IPV6_REASS + LWIP_IPV6_MLD)))
+#else
 #define MEMP_NUM_SYS_TIMEOUT       (LWIP_TCP + IP_REASSEMBLY + LWIP_ARP + (2*LWIP_DHCP) + LWIP_AUTOIP + LWIP_IGMP + LWIP_DNS + PPP_SUPPORT + (LWIP_IPV6 ? (1 + (2*LWIP_IPV6)) : 0))
+#endif
 
 /*
  * LWIP_COMPAT_SOCKETS==1: Enable BSD-style sockets functions names.
@@ -653,5 +657,16 @@
 #define LWIP_HOOK_IP4_ROUTE_SRC(src, dest)  lwip_ip4_route_src(dest, src)
 #endif
 #endif /* RT_USING_LWIP_VER_NUM >= 0x20000 */
+
+#ifdef RT_LWIP_ENABLE_USER_HOOKS
+/**
+ * This hook provides flexibility for handling unknown Ethernet protocols.
+ * 
+ * For example, you can define how to handle packets of unknown types, 
+ * such as forwarding them to another interface, discarding them, 
+ * or passing them to an application for further processing.
+ */
+#define LWIP_HOOK_UNKNOWN_ETH_PROTOCOL lwip_hook_unknown_eth_protocol
+#endif /* RT_LWIP_ENABLE_USER_HOOKS */
 
 #endif /* __LWIPOPTS_H__ */

@@ -74,6 +74,7 @@ template_projects:
     - figures
     - jlink
     - Kconfig
+    - platform
     - libraries
     - makefile.targets
     - project.ewd
@@ -97,5 +98,5 @@ template_projects:
   external_files: []
   project_description: ''
   project_name: hc32f448_template
-  project_type: rt-thread|@full|@4.0.2
+  project_type: rt-thread|@full|@5.3.0
 yaml_version: 3

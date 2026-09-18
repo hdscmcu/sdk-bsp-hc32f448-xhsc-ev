@@ -8,8 +8,8 @@
  * 2023-02-09     CDT          first version
  */
 
-#ifndef  __DRV_WKTM_H__
-#define  __DRV_WKTM_H__
+#ifndef __DRV_WKTM_H__
+#define __DRV_WKTM_H__
 
 #include <rtthread.h>
 
@@ -18,6 +18,6 @@ void hc32_wktm_stop(void);
 
 rt_uint32_t hc32_wktm_get_countfreq(void);
 rt_uint32_t hc32_wktm_get_tick_max(void);
-rt_uint32_t hc32_wktm_get_current_tick(void);
+rt_uint32_t hc32_wktm_get_timeout_tick(void);
 
 #endif /* __DRV_WKTM_H__ */

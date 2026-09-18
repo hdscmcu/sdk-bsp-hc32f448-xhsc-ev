@@ -5,10 +5,15 @@
  *
  * Change Logs:
  * Date           Author       Notes
- * 2022-04-28     CDT          first version
+ * 2022-04-28     CDT          First version
  * 2023-09-30     CDT          Delete dma transmit interrupt
- * 2024-02-20     CDT          support HC32F448
- * 2024-04-16     CDT          support HC32F472
+ * 2024-02-20     CDT          Support HC32F448
+ * 2024-04-16     CDT          Support HC32F472
+ * 2025-04-09     CDT          Support HC32F4A8
+ * 2025-07-18     CDT          Support HC32F334
+ * 2026-05-27     CDT          Support HC32F4A2
+ * 2026-06-04     CDT          Support HC32F467
+ * 2026-07-10     CDT          Fix SPI clock division value configuration
  */
 
 /*******************************************************************************
@@ -32,15 +37,17 @@
 /*******************************************************************************
  * Local pre-processor symbols/macros ('#define')
  ******************************************************************************/
-//#define DRV_DEBUG
-#define LOG_TAG                         "drv.spi"
+// #define DRV_DEBUG
+#define LOG_TAG "drv.spi"
 #include <drv_log.h>
 
 /* SPI max division */
-#define SPI_MAX_DIV_VAL                 (0x7U)  /* Div256 */
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F460) || defined(HC32F467)
+#define SPI_MAX_DIV_CFG_VAL (0x7U)  /* Div256 */
+#endif
 
 #ifdef BSP_SPI_USING_DMA
-    #define DMA_CH_REG(reg_base, ch)    (*(__IO uint32_t *)((uint32_t)(&(reg_base)) + ((ch) * 0x40UL)))
+#define DMA_CH_REG(reg_base, ch) (*(__IO uint32_t *)((uint32_t)(&(reg_base)) + ((ch) * 0x40UL)))
 #endif
 
 /*******************************************************************************
@@ -77,8 +84,7 @@ enum
 #endif
 };
 
-static struct hc32_spi_config spi_config[] =
-{
+static struct hc32_spi_config spi_config[] = {
 #ifdef BSP_USING_SPI1
     SPI1_BUS_CONFIG,
 #endif
@@ -99,7 +105,7 @@ static struct hc32_spi_config spi_config[] =
 #endif
 };
 
-static struct hc32_spi spi_bus_obj[sizeof(spi_config) / sizeof(spi_config[0])] = {0};
+static struct hc32_spi spi_bus_obj[sizeof(spi_config) / sizeof(spi_config[0])] = { 0 };
 
 /*******************************************************************************
  * Function implementation - global ('extern') and local ('static')
@@ -120,7 +126,7 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
     SPI_StructInit(&stcSpiInit);
 
     if ((cfg->mode & RT_SPI_SLAVE) &&
-            ((RT_SPI_MODE_0 == (cfg->mode & RT_SPI_MODE_3)) || (RT_SPI_MODE_2 == (cfg->mode & RT_SPI_MODE_3))))
+        ((RT_SPI_MODE_0 == (cfg->mode & RT_SPI_MODE_3)) || (RT_SPI_MODE_2 == (cfg->mode & RT_SPI_MODE_3))))
     {
         return -RT_EINVAL;
     }
@@ -197,21 +203,65 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
     }
     /* Get BUS clock */
     u32BusFreq = CLK_GetBusClockFreq(CLK_BUS_PCLK1);
+#if defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F460) || defined(HC32F467)
     while (cfg->max_hz < u32BusFreq / (1UL << (u32Cnt + 1U)))
     {
         u32Cnt++;
-        if (u32Cnt >= SPI_MAX_DIV_VAL)  /* Div256 */
+        if (u32Cnt >= SPI_MAX_DIV_CFG_VAL)  /* Div256 */
         {
             break;
         }
     }
     stcSpiInit.u32BaudRatePrescaler = (u32Cnt << SPI_CFG2_MBR_POS);
+#elif defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || defined(HC32F334)
+    u32Cnt = 2UL;
+    rt_uint32_t u32DIVArray[] = { SPI_BR_CLK_DIV2, SPI_BR_CLK_DIV4, SPI_BR_CLK_DIV6,
+                                  SPI_BR_CLK_DIV8, SPI_BR_CLK_DIV10, SPI_BR_CLK_DIV12,
+                                  SPI_BR_CLK_DIV14, SPI_BR_CLK_DIV16, SPI_BR_CLK_DIV18,
+                                  SPI_BR_CLK_DIV20, SPI_BR_CLK_DIV22, SPI_BR_CLK_DIV24,
+                                  SPI_BR_CLK_DIV26, SPI_BR_CLK_DIV28, SPI_BR_CLK_DIV30,
+                                  SPI_BR_CLK_DIV32, SPI_BR_CLK_DIV36, SPI_BR_CLK_DIV40,
+                                  SPI_BR_CLK_DIV44, SPI_BR_CLK_DIV48, SPI_BR_CLK_DIV52,
+                                  SPI_BR_CLK_DIV56, SPI_BR_CLK_DIV60, SPI_BR_CLK_DIV64,
+                                  SPI_BR_CLK_DIV72, SPI_BR_CLK_DIV80, SPI_BR_CLK_DIV88,
+                                  SPI_BR_CLK_DIV96, SPI_BR_CLK_DIV104, SPI_BR_CLK_DIV112,
+                                  SPI_BR_CLK_DIV120, SPI_BR_CLK_DIV128, SPI_BR_CLK_DIV144,
+                                  SPI_BR_CLK_DIV160, SPI_BR_CLK_DIV176, SPI_BR_CLK_DIV192,
+                                  SPI_BR_CLK_DIV208, SPI_BR_CLK_DIV224, SPI_BR_CLK_DIV240,
+                                  SPI_BR_CLK_DIV256 };
+    rt_uint32_t *u32DIVArrayPtr = u32DIVArray;
+    stcSpiInit.u32BaudRatePrescaler = *u32DIVArrayPtr;
+    while (cfg->max_hz < u32BusFreq / u32Cnt)
+    {
+        if (u32Cnt < 32UL)
+        {
+            u32Cnt += 2UL;
+        }
+        else if (u32Cnt < 64UL)
+        {
+            u32Cnt += 4UL;
+        }
+        else if (u32Cnt < 128UL)
+        {
+            u32Cnt += 8UL;
+        }
+        else if (u32Cnt < 256UL)
+        {
+            u32Cnt += 16UL;
+        }
+        else
+        {
+            break;
+        }
+        stcSpiInit.u32BaudRatePrescaler = *++u32DIVArrayPtr;
+    }
+#endif
     /* slave limit */
     if ((cfg->mode & RT_SPI_SLAVE) && (stcSpiInit.u32BaudRatePrescaler < SPI_BR_CLK_DIV8))
     {
         stcSpiInit.u32BaudRatePrescaler = SPI_BR_CLK_DIV8;
     }
-    LOG_D("Bus freq: %d, SPI freq: %d, BaudRatePrescaler: %d", u32BusFreq, cfg->max_hz, stcSpiInit.u32BaudRatePrescaler);
+    LOG_D("Bus freq: %d, SPI freq: %d, BaudRatePrescaler: %d, u32Cnt: %d", u32BusFreq, cfg->max_hz, stcSpiInit.u32BaudRatePrescaler, u32Cnt);
 
     /* spi port init */
     rt_hw_spi_board_init(spi_instance);
@@ -225,7 +275,7 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
     if (spi_drv->spi_dma_flag & RT_DEVICE_FLAG_DMA_RX)
     {
         struct dma_config *spi_dma;
-        stc_dma_init_t  stcDmaInit;
+        stc_dma_init_t stcDmaInit;
 
         /* Get spi dma_rx */
         spi_dma = spi_drv->config->dma_rx;
@@ -234,9 +284,9 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
         AOS_SetTriggerEventSrc(spi_dma->trigger_select, spi_dma->trigger_event);
         /* Config Dma */
         DMA_StructInit(&stcDmaInit);
-        stcDmaInit.u32BlockSize     = 1UL;
-        stcDmaInit.u32SrcAddr       = (uint32_t)(&spi_instance->DR);
-        stcDmaInit.u32SrcAddrInc    = DMA_SRC_ADDR_FIX;
+        stcDmaInit.u32BlockSize = 1UL;
+        stcDmaInit.u32SrcAddr = (uint32_t)(&spi_instance->DR);
+        stcDmaInit.u32SrcAddrInc = DMA_SRC_ADDR_FIX;
         if (8 == cfg->data_width)
         {
             stcDmaInit.u32DataWidth = DMA_DATAWIDTH_8BIT;
@@ -260,7 +310,7 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
     if (spi_drv->spi_dma_flag & RT_DEVICE_FLAG_DMA_TX)
     {
         struct dma_config *spi_dma;
-        stc_dma_init_t  stcDmaInit;
+        stc_dma_init_t stcDmaInit;
 
         /* Get spi dma_tx */
         spi_dma = spi_drv->config->dma_tx;
@@ -268,9 +318,10 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
         AOS_SetTriggerEventSrc(spi_dma->trigger_select, spi_dma->trigger_event);
         /* Config Dma */
         DMA_StructInit(&stcDmaInit);
-        stcDmaInit.u32BlockSize     = 1UL;
-        stcDmaInit.u32DestAddr      = (uint32_t)(&spi_instance->DR);;
-        stcDmaInit.u32DestAddrInc   = DMA_DEST_ADDR_FIX;
+        stcDmaInit.u32BlockSize = 1UL;
+        stcDmaInit.u32DestAddr = (uint32_t)(&spi_instance->DR);
+        ;
+        stcDmaInit.u32DestAddrInc = DMA_DEST_ADDR_FIX;
         if (8 == cfg->data_width)
         {
             stcDmaInit.u32DataWidth = DMA_DATAWIDTH_8BIT;
@@ -294,7 +345,7 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
 #endif
 
     /* Enable error interrupt */
-#if defined (HC32F448) || defined (HC32F472)
+#if defined(HC32F448) || defined(HC32F472)
     INTC_IntSrcCmd(spi_drv->config->err_irq.irq_config.int_src, ENABLE);
 #endif
     NVIC_EnableIRQ(spi_drv->config->err_irq.irq_config.irq_num);
@@ -307,12 +358,12 @@ static rt_err_t hc32_spi_init(struct hc32_spi *spi_drv, struct rt_spi_configurat
 static void hc32_spi_enable(CM_SPI_TypeDef *SPIx)
 {
     /* Check if the SPI is already enabled */
-#if defined (HC32F460) || defined (HC32F4A0)
+#if defined(HC32F460) || defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F467)
     if ((SPIx->CR1 & SPI_CR1_SPE) != SPI_CR1_SPE)
     {
         SPI_Cmd(SPIx, ENABLE);
     }
-#elif defined (HC32F448) || defined (HC32F472)
+#elif defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || defined(HC32F334)
     if ((SPIx->CR & SPI_CR_SPE) != SPI_CR_SPE)
     {
         SPI_Cmd(SPIx, ENABLE);
@@ -324,7 +375,7 @@ static void hc32_spi_enable(CM_SPI_TypeDef *SPIx)
 
 static void hc32_spi_set_trans_mode(CM_SPI_TypeDef *SPIx, uint32_t u32Mode)
 {
-#if defined (HC32F460) || defined (HC32F4A0)
+#if defined(HC32F460) || defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F467)
     if (SPI_SEND_ONLY == u32Mode)
     {
         SET_REG32_BIT(SPIx->CR1, SPI_CR1_TXMDS);
@@ -333,7 +384,7 @@ static void hc32_spi_set_trans_mode(CM_SPI_TypeDef *SPIx, uint32_t u32Mode)
     {
         CLR_REG32_BIT(SPIx->CR1, SPI_CR1_TXMDS);
     }
-#elif defined (HC32F448) || defined (HC32F472)
+#elif defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || defined(HC32F334)
     if (SPI_SEND_ONLY == u32Mode)
     {
         SET_REG32_BIT(SPIx->CR, SPI_CR_TXMDS);
@@ -350,9 +401,9 @@ static void hc32_spi_set_trans_mode(CM_SPI_TypeDef *SPIx, uint32_t u32Mode)
 #ifdef BSP_SPI_USING_DMA
 static uint32_t hc32_spi_get_trans_mode(CM_SPI_TypeDef *SPIx)
 {
-#if defined (HC32F460) || defined (HC32F4A0)
+#if defined(HC32F460) || defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F467)
     return READ_REG32_BIT(SPIx->CR1, SPI_CR1_TXMDS);
-#elif defined (HC32F448) || defined (HC32F472)
+#elif defined(HC32F448) || defined(HC32F472) || defined(HC32F4A8) || defined(HC32F334)
     return READ_REG32_BIT(SPIx->CR, SPI_CR_TXMDS);
 #else
 #error "Please select first the target HC32xxxx device used in your application."
@@ -396,7 +447,7 @@ static rt_err_t hc32_spi_configure(struct rt_spi_device *device,
     RT_ASSERT(device != RT_NULL);
     RT_ASSERT(configuration != RT_NULL);
 
-    struct hc32_spi *spi_drv =  rt_container_of(device->bus, struct hc32_spi, spi_bus);
+    struct hc32_spi *spi_drv = rt_container_of(device->bus, struct hc32_spi, spi_bus);
     spi_drv->cfg = configuration;
 
     return hc32_spi_init(spi_drv, configuration);
@@ -471,7 +522,7 @@ static int32_t hc32_spi_dma_trans(struct hc32_spi_config *spi_config, const uint
         DmaFlag = spi_config->dma_tx->flag;
     }
     while ((RESET == DMA_GetTransCompleteStatus(DmaInstance, DmaFlag)) &&
-            (u32TimeoutCnt < spi_config->timeout))
+           (u32TimeoutCnt < spi_config->timeout))
     {
         rt_thread_mdelay(1);
         u32TimeoutCnt++;
@@ -496,41 +547,41 @@ static rt_ssize_t hc32_spi_xfer(struct rt_spi_device *device, struct rt_spi_mess
 
     RT_ASSERT(device != RT_NULL);
     RT_ASSERT(device->bus != RT_NULL);
-    RT_ASSERT(device->bus->parent.user_data != RT_NULL);
     RT_ASSERT(message != RT_NULL);
 
-    struct hc32_spi *spi_drv =  rt_container_of(device->bus, struct hc32_spi, spi_bus);
+    struct hc32_spi *spi_drv = rt_container_of(device->bus, struct hc32_spi, spi_bus);
     CM_SPI_TypeDef *spi_instance = spi_drv->config->Instance;
-    struct hc32_hw_spi_cs *cs = device->parent.user_data;
 
-    if (message->cs_take && !(device->config.mode & RT_SPI_NO_CS))
+    if (message->cs_take && !(device->config.mode & RT_SPI_NO_CS) && (device->cs_pin != PIN_NONE))
     {
         if (device->config.mode & RT_SPI_CS_HIGH)
         {
-            GPIO_SetPins(cs->port, cs->pin);
+            rt_pin_write(device->cs_pin, PIN_HIGH);
         }
         else
         {
-            GPIO_ResetPins(cs->port, cs->pin);
+            rt_pin_write(device->cs_pin, PIN_LOW);
         }
     }
+
+    LOG_D("%s transfer prepare and start", spi_drv->config->bus_name);
     LOG_D("%s sendbuf: %X, recvbuf: %X, length: %d", spi_drv->config->bus_name,
           (uint32_t)message->send_buf, (uint32_t)message->recv_buf, message->length);
 
-    message_length  = message->length;
-    recv_buf        = message->recv_buf;
-    send_buf        = message->send_buf;
+    message_length = message->length;
+    recv_buf = message->recv_buf;
+    send_buf = message->send_buf;
     while (message_length)
     {
         if (message_length > 65535)
         {
-            send_length     = 65535;
-            message_length  = message_length - 65535;
+            send_length = 65535;
+            message_length = message_length - 65535;
         }
         else
         {
-            send_length     = message_length;
-            message_length  = 0;
+            send_length = message_length;
+            message_length = 0;
         }
 
         /* calculate the start address */
@@ -603,7 +654,7 @@ static rt_ssize_t hc32_spi_xfer(struct rt_spi_device *device, struct rt_spi_mess
                 {
                     u32TimeoutCnt = 0U;
                     while ((RESET == SPI_GetStatus(spi_instance, SPI_FLAG_IDLE)) &&
-                            (u32TimeoutCnt < spi_drv->config->timeout))
+                           (u32TimeoutCnt < spi_drv->config->timeout))
                     {
                         rt_thread_mdelay(1);
                         u32TimeoutCnt++;
@@ -621,54 +672,42 @@ static rt_ssize_t hc32_spi_xfer(struct rt_spi_device *device, struct rt_spi_mess
     /* clear error flag */
     SPI_ClearStatus(spi_instance, SPI_FLAG_CLR_ALL);
 
-    if (message->cs_release && !(device->config.mode & RT_SPI_NO_CS))
+    if (message->cs_release && !(device->config.mode & RT_SPI_NO_CS) && (device->cs_pin != PIN_NONE))
     {
         if (device->config.mode & RT_SPI_CS_HIGH)
         {
-            GPIO_ResetPins(cs->port, cs->pin);
+            rt_pin_write(device->cs_pin, PIN_LOW);
         }
         else
         {
-            GPIO_SetPins(cs->port, cs->pin);
+            rt_pin_write(device->cs_pin, PIN_HIGH);
         }
     }
 
     return message->length;
 }
 
-static const struct rt_spi_ops hc32_spi_ops =
-{
-    .configure  = hc32_spi_configure,
-    .xfer       = hc32_spi_xfer,
+static const struct rt_spi_ops hc32_spi_ops = {
+    .configure = hc32_spi_configure,
+    .xfer = hc32_spi_xfer,
 };
 
 /**
   * Attach the spi device to SPI bus, this function must be used after initialization.
   */
-rt_err_t rt_hw_spi_device_attach(const char *bus_name, const char *device_name, uint8_t cs_gpio_port, uint16_t cs_gpio_pin)
+rt_err_t rt_hw_spi_device_attach(const char *bus_name, const char *device_name, rt_base_t cs_pin)
 {
     RT_ASSERT(bus_name != RT_NULL);
     RT_ASSERT(device_name != RT_NULL);
 
     rt_err_t result;
     struct rt_spi_device *spi_device;
-    struct hc32_hw_spi_cs *cs_pin;
-    stc_gpio_init_t stcGpioInit;
-
-    GPIO_StructInit(&stcGpioInit);
-    stcGpioInit.u16PinState = PIN_STAT_SET;
-    stcGpioInit.u16PinDir   = PIN_DIR_OUT;
-    stcGpioInit.u16PullUp   = PIN_PU_ON;
-    GPIO_Init(cs_gpio_port, cs_gpio_pin, &stcGpioInit);
 
     /* attach the device to spi bus*/
     spi_device = (struct rt_spi_device *)rt_malloc(sizeof(struct rt_spi_device));
     RT_ASSERT(spi_device != RT_NULL);
-    cs_pin = (struct hc32_hw_spi_cs *)rt_malloc(sizeof(struct hc32_hw_spi_cs));
-    RT_ASSERT(cs_pin != RT_NULL);
-    cs_pin->port = cs_gpio_port;
-    cs_pin->pin  = cs_gpio_pin;
-    result = rt_spi_bus_attach_device(spi_device, device_name, bus_name, (void *)cs_pin);
+
+    result = rt_spi_bus_attach_device_cspin(spi_device, device_name, bus_name, cs_pin, RT_NULL);
 
     if (result != RT_EOK)
     {
@@ -680,21 +719,17 @@ rt_err_t rt_hw_spi_device_attach(const char *bus_name, const char *device_name, 
 
 static void hc32_spi_err_irq_handle(struct hc32_spi *spi)
 {
-#if defined (HC32F448) ||defined (HC32F472)
-#define SPI_FLAG_OVERLOAD       SPI_FLAG_OVERRUN
-#define SPI_FLAG_UNDERLOAD      SPI_FLAG_UNDERRUN
-#endif
     __UNUSED uint32_t UnusedData;
     CM_SPI_TypeDef *spi_instance = spi->config->Instance;
 
-    if (RESET != SPI_GetStatus(spi_instance, SPI_FLAG_OVERLOAD))
+    if (RESET != SPI_GetStatus(spi_instance, SPI_FLAG_OVERRUN))
     {
         UnusedData = SPI_ReadData(spi_instance);
-        SPI_ClearStatus(spi_instance, SPI_FLAG_OVERLOAD);
+        SPI_ClearStatus(spi_instance, SPI_FLAG_OVERRUN);
     }
-    if (RESET != SPI_GetStatus(spi_instance, SPI_FLAG_UNDERLOAD))
+    if (RESET != SPI_GetStatus(spi_instance, SPI_FLAG_UNDERRUN))
     {
-        SPI_ClearStatus(spi_instance, SPI_FLAG_UNDERLOAD);
+        SPI_ClearStatus(spi_instance, SPI_FLAG_UNDERRUN);
     }
     if (RESET != SPI_GetStatus(spi_instance, SPI_FLAG_MD_FAULT))
     {
@@ -716,13 +751,17 @@ static void hc32_spi1_err_irq_handler(void)
     rt_interrupt_leave();
 }
 
-#if defined (HC32F448) ||defined (HC32F472)
+#if defined(HC32F448) || defined(HC32F472)
 void SPI1_Handler(void)
 {
     hc32_spi1_err_irq_handler();
 }
-#endif /* HC32F448, HC32F472 */
-
+#elif defined(HC32F334)
+void SPI_Handler(void)
+{
+    hc32_spi1_err_irq_handler();
+}
+#endif /* HC32F334 */
 #endif /* BSP_USING_SPI1 */
 
 #if defined(BSP_USING_SPI2)
@@ -734,13 +773,13 @@ static void hc32_spi2_err_irq_handler(void)
     /* leave interrupt */
     rt_interrupt_leave();
 }
-#if defined (HC32F448) ||defined (HC32F472)
+
+#if defined(HC32F448) || defined(HC32F472)
 void SPI2_Handler(void)
 {
     hc32_spi2_err_irq_handler();
 }
 #endif /* HC32F448, HC32F472 */
-
 #endif /* BSP_USING_SPI2 */
 
 #if defined(BSP_USING_SPI3)
@@ -752,13 +791,13 @@ static void hc32_spi3_err_irq_handler(void)
     /* leave interrupt */
     rt_interrupt_leave();
 }
-#if defined (HC32F448) ||defined (HC32F472)
+
+#if defined(HC32F448) || defined(HC32F472)
 void SPI3_Handler(void)
 {
     hc32_spi3_err_irq_handler();
 }
 #endif /* HC32F448, HC32F472 */
-
 #endif /* BSP_USING_SPI3 */
 
 #if defined(BSP_USING_SPI4)
@@ -770,6 +809,14 @@ static void hc32_spi4_err_irq_handler(void)
     /* leave interrupt */
     rt_interrupt_leave();
 }
+
+#if defined(HC32F472)
+void SPI4_Handler(void)
+{
+    hc32_spi4_err_irq_handler();
+}
+#endif /* HC32F472 */
+
 #endif /* BSP_USING_SPI4 */
 
 #if defined(BSP_USING_SPI5)
@@ -823,7 +870,7 @@ static void hc32_get_spi_callback(void)
 }
 
 /**
-  * @brief  This function gets dma witch spi used infomation include unit,
+  * @brief  This function gets dma witch spi used information include unit,
   *         channel, interrupt etc.
   * @param  None
   * @retval None
@@ -833,67 +880,67 @@ static void hc32_get_dma_info(void)
 #ifdef BSP_SPI1_RX_USING_DMA
     spi_bus_obj[SPI1_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config spi1_dma_rx = SPI1_RX_DMA_CONFIG;
-    spi_config[SPI1_INDEX].dma_rx   = &spi1_dma_rx;
+    spi_config[SPI1_INDEX].dma_rx = &spi1_dma_rx;
 #endif
 #ifdef BSP_SPI1_TX_USING_DMA
     spi_bus_obj[SPI1_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config spi1_dma_tx = SPI1_TX_DMA_CONFIG;
-    spi_config[SPI1_INDEX].dma_tx   = &spi1_dma_tx;
+    spi_config[SPI1_INDEX].dma_tx = &spi1_dma_tx;
 #endif
 
 #ifdef BSP_SPI2_RX_USING_DMA
     spi_bus_obj[SPI2_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config spi2_dma_rx = SPI2_RX_DMA_CONFIG;
-    spi_config[SPI2_INDEX].dma_rx   = &spi2_dma_rx;
+    spi_config[SPI2_INDEX].dma_rx = &spi2_dma_rx;
 #endif
 #ifdef BSP_SPI2_TX_USING_DMA
     spi_bus_obj[SPI2_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config spi2_dma_tx = SPI2_TX_DMA_CONFIG;
-    spi_config[SPI2_INDEX].dma_tx   = &spi2_dma_tx;
+    spi_config[SPI2_INDEX].dma_tx = &spi2_dma_tx;
 #endif
 
 #ifdef BSP_SPI3_RX_USING_DMA
     spi_bus_obj[SPI3_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config spi3_dma_rx = SPI3_RX_DMA_CONFIG;
-    spi_config[SPI3_INDEX].dma_rx   = &spi3_dma_rx;
+    spi_config[SPI3_INDEX].dma_rx = &spi3_dma_rx;
 #endif
 #ifdef BSP_SPI3_TX_USING_DMA
     spi_bus_obj[SPI3_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config spi3_dma_tx = SPI3_TX_DMA_CONFIG;
-    spi_config[SPI3_INDEX].dma_tx   = &spi3_dma_tx;
+    spi_config[SPI3_INDEX].dma_tx = &spi3_dma_tx;
 #endif
 
 #ifdef BSP_SPI4_RX_USING_DMA
     spi_bus_obj[SPI4_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config spi4_dma_rx = SPI4_RX_DMA_CONFIG;
-    spi_config[SPI4_INDEX].dma_rx   = &spi4_dma_rx;
+    spi_config[SPI4_INDEX].dma_rx = &spi4_dma_rx;
 #endif
 #ifdef BSP_SPI4_TX_USING_DMA
     spi_bus_obj[SPI4_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config spi4_dma_tx = SPI4_TX_DMA_CONFIG;
-    spi_config[SPI4_INDEX].dma_tx   = &spi4_dma_tx;
+    spi_config[SPI4_INDEX].dma_tx = &spi4_dma_tx;
 #endif
 
 #ifdef BSP_SPI5_RX_USING_DMA
     spi_bus_obj[SPI5_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config spi5_dma_rx = SPI5_RX_DMA_CONFIG;
-    spi_config[SPI5_INDEX].dma_rx   = &spi5_dma_rx;
+    spi_config[SPI5_INDEX].dma_rx = &spi5_dma_rx;
 #endif
 #ifdef BSP_SPI5_TX_USING_DMA
     spi_bus_obj[SPI5_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config spi5_dma_tx = SPI5_TX_DMA_CONFIG;
-    spi_config[SPI5_INDEX].dma_tx   = &spi5_dma_tx;
+    spi_config[SPI5_INDEX].dma_tx = &spi5_dma_tx;
 #endif
 
 #ifdef BSP_SPI6_RX_USING_DMA
     spi_bus_obj[SPI6_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config spi6_dma_rx = SPI6_RX_DMA_CONFIG;
-    spi_config[SPI6_INDEX].dma_rx   = &spi6_dma_rx;
+    spi_config[SPI6_INDEX].dma_rx = &spi6_dma_rx;
 #endif
 #ifdef BSP_SPI6_TX_USING_DMA
     spi_bus_obj[SPI6_INDEX].spi_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config spi6_dma_tx = SPI6_TX_DMA_CONFIG;
-    spi_config[SPI6_INDEX].dma_tx   = &spi6_dma_tx;
+    spi_config[SPI6_INDEX].dma_tx = &spi6_dma_tx;
 #endif
 }
 
@@ -907,9 +954,9 @@ static int hc32_hw_spi_bus_init(void)
         spi_bus_obj[i].config = &spi_config[i];
         spi_bus_obj[i].spi_bus.parent.user_data = &spi_config[i];
         /* register the handle */
-#if defined (HC32F460) || defined (HC32F4A0)
+#if defined(HC32F460) || defined(HC32F4A0) || defined(HC32F4A2) || defined(HC32F4A8) || defined(HC32F467)
         hc32_install_irq_handler(&spi_config[i].err_irq.irq_config, spi_config[i].err_irq.irq_callback, RT_FALSE);
-#elif defined (HC32F488)
+#elif defined(HC32F448) || defined(HC32F472) || defined(HC32F334)
         INTC_IntSrcCmd(spi_config[i].err_irq.irq_config.int_src, DISABLE);
         NVIC_DisableIRQ(spi_config[i].err_irq.irq_config.irq_num);
 #endif

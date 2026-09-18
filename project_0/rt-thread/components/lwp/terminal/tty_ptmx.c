@@ -27,7 +27,6 @@ static int ptm_fops_open(struct dfs_file *file)
     rt_uint32_t oflags = file->flags;
     rt_thread_t cur_thr = rt_thread_self();
 
-    /* we don't check refcnt because each open will create a new device */
     if (file->vnode && file->vnode->data)
     {
         /**
@@ -62,16 +61,9 @@ static int ptm_fops_close(struct dfs_file *file)
 
     if (file->data)
     {
-        if (file->vnode->ref_count != 1)
-        {
-            rc = 0;
-        }
-        else
-        {
-            device = (rt_device_t)file->data;
-            tp = rt_container_of(device, struct lwp_tty, parent);
-            rc = bsd_ptsdev_methods.fo_close(tp, rt_thread_self());
-        }
+        device = (rt_device_t)file->data;
+        tp = rt_container_of(device, struct lwp_tty, parent);
+        rc = bsd_ptsdev_methods.fo_close(tp, rt_thread_self());
     }
     else
     {
@@ -298,7 +290,7 @@ rt_err_t lwp_ptmx_init(rt_device_t ptmx_device, const char *root_path)
     if (device_name)
     {
         /* Register device */
-        sprintf(device_name, "%s%s", root_path, dev_rel_path);
+        snprintf(device_name, root_len + sizeof("/ptmx"), "%s%s", root_path, dev_rel_path);
         rt_device_register(ptmx_device, device_name, 0);
 
         /* Setup fops */
@@ -326,7 +318,7 @@ static rt_err_t sysptmx_readlink(struct rt_device *dev, char *buf, int len)
     int rc = 0;
 
     /* TODO: support multi-root ? */
-    strncpy(buf, "pts/ptmx", len);
+    snprintf(buf, len, "pts/ptmx");
 
     return rc;
 }
